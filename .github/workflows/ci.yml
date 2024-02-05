@@ -22,6 +22,7 @@ env:
   CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
   CARGO_PROFILE_DEV_CODEGEN_UNITS: 4
   CARGO_PROFILE_CHECK_ONLY_CODEGEN_UNITS: 4
+  MSRV: 1.75.0
 
 jobs:
   test:
@@ -102,8 +103,6 @@ jobs:
     - run: |
         rustup toolchain install $MSRV --profile minimal
         rustup override set $MSRV
-      env:
-        MSRV: 1.75.0
 
     = run: cargo -vV
 
