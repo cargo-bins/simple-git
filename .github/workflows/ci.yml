@@ -1,0 +1,131 @@
+name: CI
+
+on:
+  merge_group:
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - synchronize
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - README.md
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref || github.event.pull_request.number || github.sha }}-${{ inputs.additional_key }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+  CARGO_PROFILE_DEV_CODEGEN_UNITS: 4
+  CARGO_PROFILE_CHECK_ONLY_CODEGEN_UNITS: 4
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            os: macos-14
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+
+    runs-on: ${{ matrix.os }}
+    env:
+      CARGO_BUILD_TARGET: ${{ matrix.target }}
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install tools
+      uses: taiki-e/install-action@v2
+      with:
+        tool: cargo-nextest
+
+    - uses: Swatinem/rust-cache@v2
+
+    - run: |
+        cargo nextest run
+        cargo test --doc
+
+  lint:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            os: macos-14
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+
+    runs-on: ${{ matrix.os }}
+    steps:
+    - uses: actions/checkout@v4
+    - uses: ./.github/actions/just-setup
+
+    - run: rustup component add rustfmt clippy
+
+    - name: Install tools
+      uses: taiki-e/install-action@v2
+      with:
+        tool: cargo-hack
+
+    - uses: Swatinem/rust-cache@v2
+
+    - run: cargo fmt --all --check
+    - run: cargo clippy --no-deps --all-targets
+    - run: cargo hack --all --feature-powerset --no-dev-deps check
+
+  pr-info:
+    outputs:
+      is-release: ${{ steps.meta.outputs.is-release }}
+      crate: ${{ steps.meta.outputs.crates-names }}
+
+    runs-on: ubuntu-latest
+    steps:
+    - id: meta
+      if: github.event_name == 'pull_request'
+      uses: cargo-bins/release-meta@v1
+      with:
+        event-data: ${{ toJSON(github.event) }}
+        extract-notes-under: '### Release notes'
+
+  release-dry-run:
+    needs: pr-info
+    uses: ./.github/workflows/release-cli.yml
+    if: github.event_name != 'pull_request' || needs.pr-info.outputs.is-release == 'true'
+    secrets: inherit
+    with:
+      info: |
+        {
+          "is-release": false,
+          "crate": "${{ needs.pr-info.outputs.crate }}",
+          "version": "0.0.0",
+          "notes": ""
+        }
+      CARGO_PROFILE_RELEASE_LTO: no
+      CARGO_PROFILE_RELEASE_CODEGEN_UNITS: 4
+
+
+  # Dummy job to have a stable name for the "all tests pass" requirement
+  tests-pass:
+    name: Tests pass
+    needs:
+    - test
+    - lint
+    - release-dry-run
+    if: always() # always run even if dependencies fail
+    runs-on: ubuntu-latest
+    steps:
+    # fail if ANY dependency has failed or cancelled
+    - if: "contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')"
+      run: exit 1
+    - run: exit 0
