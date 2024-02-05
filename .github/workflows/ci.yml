@@ -104,7 +104,7 @@ jobs:
         rustup toolchain install $MSRV --profile minimal
         rustup override set $MSRV
 
-    = run: cargo -vV
+    - run: cargo -vV
 
     - uses: Swatinem/rust-cache@v2
 
