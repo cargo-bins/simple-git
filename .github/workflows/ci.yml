@@ -103,6 +103,7 @@ jobs:
     - run: |
         rustup toolchain install $MSRV --profile minimal
         rustup override set $MSRV
+      shell: bash
 
     - run: cargo -vV
 
