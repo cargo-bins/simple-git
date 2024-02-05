@@ -22,6 +22,7 @@ env:
   CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
   CARGO_PROFILE_DEV_CODEGEN_UNITS: 4
   CARGO_PROFILE_CHECK_ONLY_CODEGEN_UNITS: 4
+  MSRV: 1.75.0
 
 jobs:
   test:
@@ -83,12 +84,40 @@ jobs:
     - run: cargo clippy --no-deps --all-targets
     - run: cargo hack --all --feature-powerset --no-dev-deps check
 
+  msrv:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            os: macos-14
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+
+    runs-on: ${{ matrix.os }}
+    steps:
+    - uses: actions/checkout@v4
+
+    - run: |
+        rustup toolchain install $MSRV --profile minimal
+        rustup override set $MSRV
+      shell: bash
+
+    - run: cargo -vV
+
+    - uses: Swatinem/rust-cache@v2
+
+    - run: cargo check
+
   # Dummy job to have a stable name for the "all tests pass" requirement
   tests-pass:
     name: Tests pass
     needs:
     - test
     - lint
+    - msrv
     if: always() # always run even if dependencies fail
     runs-on: ubuntu-latest
     steps:
