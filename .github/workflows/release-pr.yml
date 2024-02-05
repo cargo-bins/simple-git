@@ -36,3 +36,4 @@ jobs:
           pr-template-file: .github/scripts/release-pr-template.ejs
           check-semver: true
           check-package: true
+          crate-release-all: true
