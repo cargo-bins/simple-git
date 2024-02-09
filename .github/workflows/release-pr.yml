@@ -37,3 +37,4 @@ jobs:
           check-semver: true
           check-package: true
           crate-release-all: true
+          crate-path: ./
