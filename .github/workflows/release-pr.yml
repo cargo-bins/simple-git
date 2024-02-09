@@ -38,3 +38,4 @@ jobs:
           check-package: true
           crate-release-all: true
           crate-path: ./
+          crate-name: simple-git
