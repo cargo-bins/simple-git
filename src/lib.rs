@@ -1,6 +1,10 @@
 use std::{fmt, mem, num::NonZeroU32, path::Path, str::FromStr, sync::atomic::AtomicBool};
 
-use gix::{clone, create, open, remote, Url};
+use gix::{
+    clone, create,
+    open::{self, Permissions},
+    remote, Url,
+};
 use tracing::debug;
 
 mod progress_tracing;
@@ -47,7 +51,7 @@ impl Repository {
                 destination_must_be_empty: true,
                 ..Default::default()
             },
-            open::Options::isolated(),
+            open::Options::default().permissions(Permissions::all()),
         )?
         .with_shallow(remote::fetch::Shallow::DepthAtRemote(
             NonZeroU32::new(1).unwrap(),
