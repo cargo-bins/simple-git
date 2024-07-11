@@ -11,10 +11,10 @@ authors = ["Jiahao XU <Jiahao_XU@outlook.com>"]
 license = "Apache-2.0 OR MIT"
 
 [dependencies]
-compact_str = "0.7.0"
+compact_str = "0.8.0"
 derive_destructure2 = "0.1"
 thiserror = "1.0.52"
-tokio = { version = "1.37.0", features = ["rt", "time"], default-features = false }
+tokio = { version = "1.38.0", features = ["rt", "time"], default-features = false }
 tracing = "0.1.39"
 
 [dependencies.gix]
