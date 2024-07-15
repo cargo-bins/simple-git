@@ -6,6 +6,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.10](https://github.com/cargo-bins/simple-git/compare/v0.2.9...v0.2.10) - 2024-07-15
+
+### Other
+- Add new API `Repository::get_head_commit_hash()` ([#31](https://github.com/cargo-bins/simple-git/pull/31))
+
 ## [0.2.9](https://github.com/cargo-bins/simple-git/compare/v0.2.8...v0.2.9) - 2024-07-11
 
 ### Other
