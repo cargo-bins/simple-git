@@ -14,7 +14,10 @@ license = "Apache-2.0 OR MIT"
 compact_str = "0.8.0"
 derive_destructure2 = "0.1"
 thiserror = "1.0.52"
-tokio = { version = "1.37.0", features = ["rt", "time"], default-features = false }
+tokio = { version = "1.37.0", features = [
+    "rt",
+    "time",
+], default-features = false }
 tracing = "0.1.39"
 
 [dependencies.gix]
@@ -28,11 +31,7 @@ features = [
 ]
 
 [features]
-rustls = [
-    "gix/blocking-http-transport-reqwest-rust-tls",
-]
-native-tls = [
-    "gix/blocking-http-transport-reqwest-native-tls",
-]
+rustls = ["gix/blocking-http-transport-reqwest-rust-tls"]
+native-tls = ["gix/blocking-http-transport-reqwest-native-tls"]
 
 git-max-perf = ["gix/max-performance"]
