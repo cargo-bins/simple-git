@@ -138,4 +138,13 @@ impl Repository {
 
         Ok(inner(self, path.as_ref())?)
     }
+
+    pub fn get_head_commit_hash(&self) -> Result<impl fmt::Display, GitError> {
+        Ok(self
+            .0
+            .to_thread_local()
+            .head_commit()
+            .map_err(GitErrorInner::from)?
+            .id)
+    }
 }

@@ -16,13 +16,13 @@ pub(super) enum GitErrorInner {
     #[error("Failed to checkout: {0}")]
     CheckOutError(#[source] Box<clone::checkout::main_worktree::Error>),
 
-    #[error("HEAD ref was corrupt in crates-io index repository clone")]
+    #[error("HEAD ref was corrupt in crates-io index repository clone: {0}")]
     HeadCommit(#[source] Box<gix::reference::head_commit::Error>),
 
-    #[error("tree of head commit wasn't present in crates-io index repository clone")]
+    #[error("tree of head commit wasn't present in crates-io index repository clone: {0}")]
     GetTreeOfCommit(#[source] Box<gix::object::commit::Error>),
 
-    #[error("An object was missing in the crates-io index repository clone")]
+    #[error("An object was missing in the crates-io index repository clone: {0}")]
     ObjectLookup(#[source] Box<gix::object::find::existing::Error>),
 }
 
