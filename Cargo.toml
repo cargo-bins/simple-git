@@ -21,7 +21,7 @@ tokio = { version = "1.37.0", features = [
 tracing = "0.1.39"
 
 [dependencies.gix]
-version = "0.63.0"
+version = "0.64.0"
 default-features = false
 features = [
     "comfort",
