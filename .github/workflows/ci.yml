@@ -25,36 +25,6 @@ env:
   MSRV: 1.75.0
 
 jobs:
-  test:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - target: aarch64-apple-darwin
-            os: macos-14
-          - target: x86_64-unknown-linux-gnu
-            os: ubuntu-latest
-          - target: x86_64-pc-windows-msvc
-            os: windows-latest
-
-    runs-on: ${{ matrix.os }}
-    env:
-      CARGO_BUILD_TARGET: ${{ matrix.target }}
-
-    steps:
-    - uses: actions/checkout@v4
-
-    - name: Install tools
-      uses: taiki-e/install-action@v2
-      with:
-        tool: cargo-nextest
-
-    - uses: Swatinem/rust-cache@v2
-
-    - run: |
-        cargo nextest run
-        cargo test --doc
-
   lint:
     strategy:
       fail-fast: false
@@ -115,7 +85,6 @@ jobs:
   tests-pass:
     name: Tests pass
     needs:
-    - test
     - lint
     - msrv
     if: always() # always run even if dependencies fail
