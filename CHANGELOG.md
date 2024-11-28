@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.15](https://github.com/cargo-bins/simple-git/compare/v0.2.14...v0.2.15) - 2024-11-28
+
+### Other
+
+- Fix ci.yml ([#42](https://github.com/cargo-bins/simple-git/pull/42))
+
 ## [0.2.14](https://github.com/cargo-bins/simple-git/compare/v0.2.13...v0.2.14) - 2024-11-24
 
 ### Other
