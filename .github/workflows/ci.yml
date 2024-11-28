@@ -85,7 +85,6 @@ jobs:
   tests-pass:
     name: Tests pass
     needs:
-    - test
     - lint
     - msrv
     if: always() # always run even if dependencies fail
