@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.17](https://github.com/cargo-bins/simple-git/compare/v0.2.16...v0.2.17) - 2025-02-27
+
+### Other
+
+- Bump compact_str from 0.8.1 to 0.9.0 in the deps group ([#54](https://github.com/cargo-bins/simple-git/pull/54))
+
 ## [0.2.16](https://github.com/cargo-bins/simple-git/compare/v0.2.15...v0.2.16) - 2025-01-19
 
 ### Other
