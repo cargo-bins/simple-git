@@ -34,4 +34,5 @@ features = [
 rustls = ["gix/blocking-http-transport-reqwest-rust-tls"]
 native-tls = ["gix/blocking-http-transport-reqwest-native-tls"]
 
+git-max-perf-safe = ["gix/max-performance-safe"]
 git-max-perf = ["gix/max-performance"]
