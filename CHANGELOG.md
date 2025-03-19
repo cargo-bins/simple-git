@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.18](https://github.com/cargo-bins/simple-git/compare/v0.2.17...v0.2.18) - 2025-03-19
+
+### Other
+
+- Add new feature git-max-perf-safe ([#56](https://github.com/cargo-bins/simple-git/pull/56))
+
 ## [0.2.17](https://github.com/cargo-bins/simple-git/compare/v0.2.16...v0.2.17) - 2025-02-27
 
 ### Other
