@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.20](https://github.com/cargo-bins/simple-git/compare/v0.2.19...v0.2.20) - 2025-07-17
+
+### Other
+
+- Bump gix from 0.71.0 to 0.73.0 in the deps group (#60 #62)
+
 ## [0.2.19](https://github.com/cargo-bins/simple-git/compare/v0.2.18...v0.2.19) - 2025-04-05
 
 ### Other
