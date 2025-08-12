@@ -39,7 +39,7 @@ jobs:
 
     runs-on: ${{ matrix.os }}
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
 
     - run: rustup component add rustfmt clippy
 
@@ -68,7 +68,7 @@ jobs:
 
     runs-on: ${{ matrix.os }}
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
 
     - run: |
         rustup toolchain install $MSRV --profile minimal
