@@ -6,7 +6,7 @@ edition = "2021"
 description = "The simple git interface for gix suitable for async context (with tokio)"
 repository = "https://github.com/cargo-bins/simple-git"
 documentation = "https://docs.rs/simple-git"
-rust-version = "1.75.0"
+rust-version = "1.82.0"
 authors = ["Jiahao XU <Jiahao_XU@outlook.com>"]
 license = "Apache-2.0 OR MIT"
 
