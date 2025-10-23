@@ -6,7 +6,7 @@ edition = "2021"
 description = "The simple git interface for gix suitable for async context (with tokio)"
 repository = "https://github.com/cargo-bins/simple-git"
 documentation = "https://docs.rs/simple-git"
-rust-version = "1.75.0"
+rust-version = "1.82.0"
 authors = ["Jiahao XU <Jiahao_XU@outlook.com>"]
 license = "Apache-2.0 OR MIT"
 
@@ -21,7 +21,7 @@ tokio = { version = "1.37.0", features = [
 tracing = "0.1.41"
 
 [dependencies.gix]
-version = "0.73.0"
+version = "0.74.0"
 default-features = false
 features = [
     "comfort",
