@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.22](https://github.com/cargo-bins/simple-git/compare/v0.2.21...v0.2.22) - 2025-11-21
+
+### Other
+
+- Bump actions/checkout from 5 to 6 ([#70](https://github.com/cargo-bins/simple-git/pull/70))
+
 ## [0.2.21](https://github.com/cargo-bins/simple-git/compare/v0.2.20...v0.2.21) - 2025-10-23
 
 ### Other
