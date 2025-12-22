@@ -18,10 +18,10 @@ tokio = { version = "1.37.0", features = [
     "rt",
     "time",
 ], default-features = false }
-tracing = "0.1.41"
+tracing = "0.1.44"
 
 [dependencies.gix]
-version = "0.75.0"
+version = "0.76.0"
 default-features = false
 features = [
     "comfort",
