@@ -29,6 +29,7 @@ features = [
     "max-performance-safe",
     "worktree-mutation",
     "sha1",
+    "tracing",
 ]
 
 [features]
