@@ -28,6 +28,7 @@ features = [
     "blocking-http-transport-reqwest",
     "max-performance-safe",
     "worktree-mutation",
+    "sha1",
 ]
 
 [features]
