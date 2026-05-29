@@ -48,7 +48,7 @@ impl Repository {
             path,
             kind,
             create::Options {
-                destination_must_be_empty: true,
+                destination_must_be_empty: Some(true),
                 ..Default::default()
             },
             open::Options::default().permissions(Permissions::all()),
