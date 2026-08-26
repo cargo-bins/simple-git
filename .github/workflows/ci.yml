@@ -44,7 +44,7 @@ jobs:
     - run: rustup component add rustfmt clippy
 
     - name: Install tools
-      uses: taiki-e/install-action@v2.86.5
+      uses: taiki-e/install-action@v2.86.6
       with:
         tool: cargo-hack
 
