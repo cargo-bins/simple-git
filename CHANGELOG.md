@@ -6,6 +6,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.35](https://github.com/cargo-bins/simple-git/compare/v0.2.34...v0.2.35) - 2026-09-02
+
+### Other
+
+- Bump gix from 0.86.0 to 0.87.0 in the deps group ([#117](https://github.com/cargo-bins/simple-git/pull/117))
+- Bump taiki-e/install-action from 2.85.3 to 2.86.5 ([#114](https://github.com/cargo-bins/simple-git/pull/114))
+- Bump taiki-e/install-action from 2 to 2.85.3 ([#102](https://github.com/cargo-bins/simple-git/pull/102))
+
 ## [0.2.34](https://github.com/cargo-bins/simple-git/compare/v0.2.33...v0.2.34) - 2026-07-24
 
 ### Other
