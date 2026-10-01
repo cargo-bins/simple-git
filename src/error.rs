@@ -1,3 +1,5 @@
+use std::panic;
+
 use gix::Error as GixError;
 use thiserror::Error as ThisError;
 
@@ -10,5 +12,10 @@ impl GitError {
         Self(Box::new(err))
     }
 }
+
+// GixError contains Box<dyn ...> without these bounds
+// Error type doesn't have any state that can break anything
+impl panic::UnwindSafe for GitError {}
+impl panic::RefUnwindSafe for GitError {}
 
 pub type GitUrlParseError = GitError;
