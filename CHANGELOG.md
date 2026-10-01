@@ -6,6 +6,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.36](https://github.com/cargo-bins/simple-git/compare/v0.2.35...v0.2.36) - 2026-10-01
+
+### Other
+
+- Add panic safety implementations for GitError ([#141](https://github.com/cargo-bins/simple-git/pull/141))
+- Bump gix from 0.87.1 to 0.88.0 in the deps group ([#140](https://github.com/cargo-bins/simple-git/pull/140))
+- Bump taiki-e/install-action from 2.86.5 to 2.87.20 ([#137](https://github.com/cargo-bins/simple-git/pull/137))
+
 ## [0.2.35](https://github.com/cargo-bins/simple-git/compare/v0.2.34...v0.2.35) - 2026-09-02
 
 ### Other
