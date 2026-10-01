@@ -14,7 +14,6 @@ mod cancellation_token;
 pub use cancellation_token::{GitCancelOnDrop, GitCancellationToken};
 
 mod error;
-use error::GitErrorInner;
 pub use error::{GitError, GitUrlParseError};
 
 #[derive(Clone, Debug)]
@@ -30,7 +29,7 @@ impl FromStr for GitUrl {
     type Err = GitUrlParseError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Url::try_from(s).map(Self).map_err(GitUrlParseError)
+        Url::try_from(s).map(Self).map_err(GitError::new)
     }
 }
 
@@ -42,7 +41,7 @@ impl Repository {
         url: GitUrl,
         path: &Path,
         kind: create::Kind,
-    ) -> Result<clone::PrepareFetch, GitErrorInner> {
+    ) -> Result<clone::PrepareFetch, GitError> {
         Ok(clone::PrepareFetch::new(
             url.0,
             path,
@@ -52,7 +51,8 @@ impl Repository {
                 ..Default::default()
             },
             open::Options::default().permissions(Permissions::all()),
-        )?
+        )
+        .map_err(GitError::new)?
         .with_shallow(remote::fetch::Shallow::DepthAtRemote(
             NonZeroU32::new(1).unwrap(),
         )))
@@ -78,7 +78,7 @@ impl Repository {
                         .map(GitCancellationToken::get_atomic)
                         .unwrap_or(&AtomicBool::new(false)),
                 )
-                .map_err(GitErrorInner::from)?
+                .map_err(GitError::new)?
                 .0
                 .into(),
         ))
@@ -100,7 +100,7 @@ impl Repository {
         Ok(Self(
             Self::prepare_fetch(url, path, create::Kind::WithWorktree)?
                 .fetch_then_checkout(&mut progress, &AtomicBool::new(false))
-                .map_err(GitErrorInner::from)?
+                .map_err(GitError::new)?
                 .0
                 .main_worktree(
                     &mut progress,
@@ -109,7 +109,7 @@ impl Repository {
                         .map(GitCancellationToken::get_atomic)
                         .unwrap_or(&AtomicBool::new(false)),
                 )
-                .map_err(GitErrorInner::from)?
+                .map_err(GitError::new)?
                 .0
                 .into(),
         ))
@@ -120,7 +120,7 @@ impl Repository {
         &self,
         path: impl AsRef<Path>,
     ) -> Result<Option<Vec<u8>>, GitError> {
-        fn inner(this: &Repository, path: &Path) -> Result<Option<Vec<u8>>, GitErrorInner> {
+        fn inner(this: &Repository, path: &Path) -> Result<Option<Vec<u8>>, gix::Error> {
             Ok(
                 if let Some(entry) = this
                     .0
@@ -136,7 +136,7 @@ impl Repository {
             )
         }
 
-        Ok(inner(self, path.as_ref())?)
+        inner(self, path.as_ref()).map_err(GitError::new)
     }
 
     pub fn get_head_commit_hash(&self) -> Result<impl fmt::Display, GitError> {
@@ -144,7 +144,7 @@ impl Repository {
             .0
             .to_thread_local()
             .head_commit()
-            .map_err(GitErrorInner::from)?
+            .map_err(GitError::new)?
             .id)
     }
 }
