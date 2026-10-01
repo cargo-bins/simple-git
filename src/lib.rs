@@ -136,7 +136,7 @@ impl Repository {
             )
         }
 
-        inner(self, path.as_ref()).map_error(GitError::new)
+        inner(self, path.as_ref()).map_err(GitError::new)
     }
 
     pub fn get_head_commit_hash(&self) -> Result<impl fmt::Display, GitError> {
