@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.37](https://github.com/cargo-bins/simple-git/compare/v0.2.36...v0.2.37) - 2026-10-08
+
+### Other
+
+- Update gix dependency version to 0.89.0 ([#146](https://github.com/cargo-bins/simple-git/pull/146))
+
 ## [0.2.36](https://github.com/cargo-bins/simple-git/compare/v0.2.35...v0.2.36) - 2026-10-01
 
 ### Other
