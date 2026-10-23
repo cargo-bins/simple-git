@@ -97,18 +97,17 @@ impl Repository {
 
         let mut progress = TracingProgress::new("Cloning with worktree");
 
+        let should_interrupt = match &cancellation_token {
+            Some(token) => token.get_atomic(),
+            None => &AtomicBool::new(false),
+        };
+
         Ok(Self(
             Self::prepare_fetch(url, path, create::Kind::WithWorktree)?
-                .fetch_then_checkout(&mut progress, &AtomicBool::new(false))
+                .fetch_then_checkout(&mut progress, should_interrupt)
                 .map_err(GitError::new)?
                 .0
-                .main_worktree(
-                    &mut progress,
-                    cancellation_token
-                        .as_ref()
-                        .map(GitCancellationToken::get_atomic)
-                        .unwrap_or(&AtomicBool::new(false)),
-                )
+                .main_worktree(&mut progress, should_interrupt)
                 .map_err(GitError::new)?
                 .0
                 .into(),
