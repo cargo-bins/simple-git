@@ -21,20 +21,18 @@ tokio = { version = "1.37.0", features = [
 tracing = "0.1.44"
 
 [dependencies.gix]
-version = "0.89.0"
-default-features = false
+version = "0.90.0"
 features = [
     "comfort",
     "blocking-http-transport-reqwest",
-    "max-performance-safe",
+    "max-performance",
     "worktree-mutation",
     "sha1",
     "tracing",
+    "zlib-sirocco",
 ]
 
 [features]
 rustls = ["gix/blocking-http-transport-reqwest-rust-tls"]
 native-tls = ["gix/blocking-http-transport-reqwest-native-tls"]
 
-git-max-perf-safe = ["gix/max-performance-safe"]
-git-max-perf = ["gix/max-performance"]
