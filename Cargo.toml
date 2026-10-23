@@ -36,3 +36,6 @@ features = [
 rustls = ["gix/blocking-http-transport-reqwest-rust-tls"]
 native-tls = ["gix/blocking-http-transport-reqwest-native-tls"]
 
+# no-op will be removed on next breaking release
+git-max-perf-safe = []
+git-max-perf = []
