@@ -22,6 +22,7 @@ tracing = "0.1.44"
 
 [dependencies.gix]
 version = "0.90.0"
+default-features = false
 features = [
     "comfort",
     "blocking-http-transport-reqwest",
