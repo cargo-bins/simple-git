@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.39](https://github.com/cargo-bins/simple-git/compare/v0.2.38...v0.2.39) - 2026-11-11
+
+### Other
+
+- Bump taiki-e/install-action from 2.87.28 to 2.90.3 ([#162](https://github.com/cargo-bins/simple-git/pull/162))
+- replace retired macos-14 runner with macos-latest ([#163](https://github.com/cargo-bins/simple-git/pull/163))
+
 ## [0.2.38](https://github.com/cargo-bins/simple-git/compare/v0.2.37...v0.2.38) - 2026-10-23
 
 ### Other
