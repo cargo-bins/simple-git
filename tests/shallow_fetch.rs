@@ -66,7 +66,12 @@ async fn shallow_fetch_head_updates_a_cached_clone() {
     assert!(received_pack);
     assert_eq!(head_file(&repo), b"v2");
     assert_eq!(repo.get_head_commit_hash().unwrap().to_string(), v2);
-    assert_eq!(repo.git_dir(), fs::canonicalize(&cache).unwrap());
+    // Canonicalize both: temp dirs are behind symlinks on macOS and get a
+    // `\\?\` prefix on Windows.
+    assert_eq!(
+        fs::canonicalize(repo.git_dir()).unwrap(),
+        fs::canonicalize(&cache).unwrap()
+    );
 
     // Still shallow: only the fetched commit is present.
     let shallow = fs::read_to_string(cache.join("shallow")).unwrap();
