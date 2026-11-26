@@ -209,7 +209,8 @@ impl Repository {
     /// WARNING: This is a blocking operation, if you want to use it in
     /// async context then you must wrap the call in [`tokio::task::spawn_blocking`].
     ///
-    /// WARNING: This function must be called after tokio runtime is initialized.
+    /// Progress is logged every 0.5s when called within a tokio runtime, and
+    /// only once otherwise.
     pub fn shallow_clone_reference(
         url: GitUrl,
         path: &Path,

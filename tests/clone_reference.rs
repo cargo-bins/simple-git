@@ -69,73 +69,60 @@ fn upstream() -> Upstream {
     }
 }
 
-async fn clone(
-    upstream: &Upstream,
-    reference: GitReference,
-) -> Result<(String, String, bool), String> {
+fn clone(upstream: &Upstream, reference: GitReference) -> Result<(String, String, bool), String> {
     let url: GitUrl = upstream.dir.path().to_str().unwrap().parse().unwrap();
-    tokio::task::spawn_blocking(move || {
-        let dest = tempfile::tempdir().unwrap();
-        let repo = Repository::shallow_clone_reference(url, dest.path(), &reference, None)
-            .map_err(|err| err.to_string())?;
+    let dest = tempfile::tempdir().unwrap();
+    let repo = Repository::shallow_clone_reference(url, dest.path(), &reference, None)
+        .map_err(|err| err.to_string())?;
 
-        let file = fs::read_to_string(dest.path().join("file")).unwrap();
-        assert_eq!(
-            repo.get_head_commit_entry_data_by_path("file")
-                .unwrap()
-                .unwrap(),
-            file.as_bytes(),
-            "worktree and HEAD disagree"
-        );
-        let shallow = dest.path().join(".git").join("shallow").exists();
-        Ok((
-            repo.get_head_commit_hash().unwrap().to_string(),
-            file,
-            shallow,
-        ))
-    })
-    .await
-    .unwrap()
+    let file = fs::read_to_string(dest.path().join("file")).unwrap();
+    assert_eq!(
+        repo.get_head_commit_entry_data_by_path("file")
+            .unwrap()
+            .unwrap(),
+        file.as_bytes(),
+        "worktree and HEAD disagree"
+    );
+    let shallow = dest.path().join(".git").join("shallow").exists();
+    Ok((
+        repo.get_head_commit_hash().unwrap().to_string(),
+        file,
+        shallow,
+    ))
 }
 
 fn rev(rev: &str) -> GitReference {
     GitReference::Rev(rev.into())
 }
 
-#[tokio::test(flavor = "multi_thread")]
-async fn default_branch() {
+#[test]
+fn default_branch() {
     let upstream = upstream();
-    let (head, file, shallow) = clone(&upstream, GitReference::DefaultBranch).await.unwrap();
+    let (head, file, shallow) = clone(&upstream, GitReference::DefaultBranch).unwrap();
     assert_eq!(
         (head.as_str(), file.as_str(), shallow),
         (upstream.main.as_str(), "main", true)
     );
 }
 
-#[tokio::test(flavor = "multi_thread")]
-async fn branch() {
+#[test]
+fn branch() {
     let upstream = upstream();
-    let (head, file, shallow) = clone(&upstream, GitReference::Branch("feature".into()))
-        .await
-        .unwrap();
+    let (head, file, shallow) = clone(&upstream, GitReference::Branch("feature".into())).unwrap();
     assert_eq!(
         (head.as_str(), file.as_str(), shallow),
         (upstream.feature.as_str(), "feature", true)
     );
 
-    let err = clone(&upstream, GitReference::Branch("v1".into()))
-        .await
-        .unwrap_err();
+    let err = clone(&upstream, GitReference::Branch("v1".into())).unwrap_err();
     assert!(err.contains("refs/heads/v1"), "{err}");
 }
 
-#[tokio::test(flavor = "multi_thread")]
-async fn tag() {
+#[test]
+fn tag() {
     let upstream = upstream();
     for tag in ["v1", "light"] {
-        let (head, file, shallow) = clone(&upstream, GitReference::Tag(tag.into()))
-            .await
-            .unwrap();
+        let (head, file, shallow) = clone(&upstream, GitReference::Tag(tag.into())).unwrap();
         assert_eq!(
             (head.as_str(), file.as_str(), shallow),
             (upstream.tagged.as_str(), "tagged", true),
@@ -143,54 +130,52 @@ async fn tag() {
         );
     }
 
-    let err = clone(&upstream, GitReference::Tag("feature".into()))
-        .await
-        .unwrap_err();
+    let err = clone(&upstream, GitReference::Tag("feature".into())).unwrap_err();
     assert!(err.contains("refs/tags/feature"), "{err}");
 }
 
-#[tokio::test(flavor = "multi_thread")]
-async fn rev_full_hash() {
+#[test]
+fn rev_full_hash() {
     let upstream = upstream();
-    let (head, file, shallow) = clone(&upstream, rev(&upstream.old)).await.unwrap();
+    let (head, file, shallow) = clone(&upstream, rev(&upstream.old)).unwrap();
     assert_eq!(
         (head.as_str(), file.as_str(), shallow),
         (upstream.old.as_str(), "old", true)
     );
 }
 
-#[tokio::test(flavor = "multi_thread")]
-async fn rev_full_ref() {
+#[test]
+fn rev_full_ref() {
     let upstream = upstream();
-    let (head, file, shallow) = clone(&upstream, rev("refs/pull/1/head")).await.unwrap();
+    let (head, file, shallow) = clone(&upstream, rev("refs/pull/1/head")).unwrap();
     assert_eq!(
         (head.as_str(), file.as_str(), shallow),
         (upstream.pull.as_str(), "pull", true)
     );
 }
 
-#[tokio::test(flavor = "multi_thread")]
-async fn rev_resolved_locally() {
+#[test]
+fn rev_resolved_locally() {
     let upstream = upstream();
 
-    let (head, file, shallow) = clone(&upstream, rev(&upstream.old[..8])).await.unwrap();
+    let (head, file, shallow) = clone(&upstream, rev(&upstream.old[..8])).unwrap();
     assert_eq!(
         (head.as_str(), file.as_str(), shallow),
         (upstream.old.as_str(), "old", false)
     );
 
-    let (head, file, _) = clone(&upstream, rev("feature")).await.unwrap();
+    let (head, file, _) = clone(&upstream, rev("feature")).unwrap();
     assert_eq!(
         (head.as_str(), file.as_str()),
         (upstream.feature.as_str(), "feature")
     );
 
-    let (head, file, _) = clone(&upstream, rev("v1")).await.unwrap();
+    let (head, file, _) = clone(&upstream, rev("v1")).unwrap();
     assert_eq!(
         (head.as_str(), file.as_str()),
         (upstream.tagged.as_str(), "tagged")
     );
 
-    let err = clone(&upstream, rev("nope")).await.unwrap_err();
+    let err = clone(&upstream, rev("nope")).unwrap_err();
     assert!(err.contains("nope"), "{err}");
 }
