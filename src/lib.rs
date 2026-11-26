@@ -269,7 +269,7 @@ impl Repository {
     }
 
     /// Open an existing repository at `path`, e.g. one created by
-    /// [`Repository::shallow_clone_bare`] in an earlier run.
+    /// [`Repository::shallow_clone_bare`] or [`Repository::init`] earlier.
     ///
     /// WARNING: This is a blocking operation, if you want to use it in
     /// async context then you must wrap the call in [`tokio::task::spawn_blocking`].
@@ -284,36 +284,57 @@ impl Repository {
         .map_err(GitError::new)
     }
 
-    /// Fetch the commit `HEAD` of `url` points to with depth 1, then
-    /// point the local `HEAD` at it (detached).
+    /// Create an empty, non-bare repository at `path`, to be filled with
+    /// [`Repository::fetch_head`].
     ///
-    /// This updates a repository created by [`Repository::shallow_clone_bare`]
-    /// (or opened with [`Repository::open`]) in place: the remote only sends
-    /// the objects the local repository does not have yet, so it is usually
-    /// much cheaper than cloning again.
+    /// The worktree is never checked out, but a non-bare layout (`path/.git`)
+    /// is what cargo uses for its registry index clones.
+    ///
+    /// WARNING: This is a blocking operation, if you want to use it in
+    /// async context then you must wrap the call in [`tokio::task::spawn_blocking`].
+    pub fn init(path: &Path) -> Result<Self, GitError> {
+        debug!("Initializing git repository at {}", path.display());
+
+        gix::init(path)
+            .map(|repo| Self(repo.into()))
+            .map_err(GitError::new)
+    }
+
+    /// Whether the repository is shallow, i.e. was cloned or fetched with
+    /// a limited depth.
+    pub fn is_shallow(&self) -> Result<bool, GitError> {
+        self.0.to_thread_local().is_shallow().map_err(GitError::new)
+    }
+
+    /// Fetch the commit `HEAD` of `url` points to into
+    /// [`Repository::FETCHED_HEAD`] (`refs/remotes/origin/HEAD`), the
+    /// refspec cargo uses to update its registry index clones.
+    ///
+    /// If `shallow` is true, fetch with depth 1, otherwise fetch the history
+    /// as well. The local `HEAD` is left alone; read the fetched tree with
+    /// [`Repository::get_entry_data_by_ref_and_path`].
+    ///
+    /// Only the objects the local repository does not have yet are sent, so
+    /// this is usually much cheaper than cloning again. Objects that are no
+    /// longer reachable are not removed.
     ///
     /// Returns `true` if a pack was received, `false` if the local repository
     /// already had everything.
-    ///
-    /// Objects that are no longer reachable are not removed, so the
-    /// repository grows with every fetch that receives a pack.
     ///
     /// WARNING: This is a blocking operation, if you want to use it in
     /// async context then you must wrap the call in [`tokio::task::spawn_blocking`].
     ///
     /// WARNING: This function must be called after tokio runtime is initialized.
-    pub fn shallow_fetch_head(
+    pub fn fetch_head(
         &self,
         url: GitUrl,
+        shallow: bool,
         cancellation_token: Option<GitCancellationToken>,
     ) -> Result<bool, GitError> {
-        /// The ref fetched `HEAD` is written to, so that its commit is
-        /// referenced by a ref, as git expects.
-        const FETCHED_HEAD: &str = "refs/remotes/origin/HEAD";
-
         fn inner(
             this: &Repository,
             url: Url,
+            shallow: bool,
             should_interrupt: &AtomicBool,
         ) -> Result<bool, gix::Error> {
             let repo = this.0.to_thread_local();
@@ -322,7 +343,7 @@ impl Repository {
             let prepare = repo
                 .remote_at(url)?
                 .with_refspecs(
-                    Some(format!("+HEAD:{FETCHED_HEAD}").as_str()),
+                    Some(format!("+HEAD:{}", Repository::FETCHED_HEAD).as_str()),
                     remote::Direction::Fetch,
                 )?
                 .with_fetch_tags(remote::fetch::Tags::None)
@@ -336,41 +357,38 @@ impl Repository {
                 .mappings
                 .iter()
                 .find_map(|mapping| mapping.remote.as_id());
-            if let (Some(remote_head), Ok(local_head)) = (remote_head, repo.head_id()) {
+            let local_head = repo
+                .try_find_reference(Repository::FETCHED_HEAD)?
+                .map(|reference| reference.into_fully_peeled_id())
+                .transpose()?;
+            if let (Some(remote_head), Some(local_head)) = (remote_head, local_head) {
                 if remote_head == local_head.detach() {
-                    debug!("HEAD is up to date");
+                    debug!("{} is up to date", Repository::FETCHED_HEAD);
                     return Ok(false);
                 }
             }
 
+            let shallow = if shallow {
+                remote::fetch::Shallow::DepthAtRemote(NonZeroU32::new(1).unwrap())
+            } else {
+                remote::fetch::Shallow::NoChange
+            };
             let outcome = prepare
-                .with_shallow(remote::fetch::Shallow::DepthAtRemote(
-                    NonZeroU32::new(1).unwrap(),
-                ))
+                .with_shallow(shallow)
                 .receive(&mut progress, should_interrupt)?;
 
             let received_pack = matches!(outcome.status, remote::fetch::Status::Change { .. });
             debug!(received_pack, "Fetched HEAD");
 
-            let fetched = repo.find_reference(FETCHED_HEAD)?.into_fully_peeled_id()?;
-
-            // Without dereferencing, so `HEAD` becomes detached instead of
-            // updating the branch it points to.
-            repo.reference(
-                "HEAD",
-                fetched,
-                gix::refs::transaction::PreviousValue::Any,
-                "fetch: point HEAD at the fetched remote HEAD",
-            )?;
-
             Ok(received_pack)
         }
 
-        debug!("Shallow fetching HEAD of {url}");
+        debug!("Fetching HEAD of {url} (shallow: {shallow})");
 
         inner(
             self,
             url.0,
+            shallow,
             cancellation_token
                 .as_ref()
                 .map(GitCancellationToken::get_atomic)
@@ -379,10 +397,44 @@ impl Repository {
         .map_err(GitError::new)
     }
 
-    /// Path to the repository's git directory, e.g. the repository itself for
-    /// a bare one.
+    /// The ref [`Repository::fetch_head`] writes the remote `HEAD` to.
+    pub const FETCHED_HEAD: &'static str = "refs/remotes/origin/HEAD";
+
+    /// Path to the repository's git directory, e.g. `path/.git` for a
+    /// non-bare one or the repository itself for a bare one.
     pub fn git_dir(&self) -> &Path {
         self.0.git_dir()
+    }
+
+    /// Read the file at `path` in the tree of the commit `reference` points
+    /// to, e.g. [`Repository::FETCHED_HEAD`].
+    ///
+    /// Returns `None` if there is no such file.
+    pub fn get_entry_data_by_ref_and_path(
+        &self,
+        reference: &str,
+        path: impl AsRef<Path>,
+    ) -> Result<Option<Vec<u8>>, GitError> {
+        fn inner(
+            this: &Repository,
+            reference: &str,
+            path: &Path,
+        ) -> Result<Option<Vec<u8>>, gix::Error> {
+            let repo = this.0.to_thread_local();
+            let commit = repo
+                .find_reference(reference)?
+                .into_fully_peeled_id()?
+                .object()?
+                .try_into_commit()?;
+
+            let data = match commit.tree()?.peel_to_entry_by_path(path)? {
+                Some(entry) => Some(mem::take(&mut entry.object()?.data)),
+                None => None,
+            };
+            Ok(data)
+        }
+
+        inner(self, reference, path.as_ref()).map_err(GitError::new)
     }
 
     #[inline(always)]
