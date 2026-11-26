@@ -183,7 +183,11 @@ impl Repository {
             shallow: bool,
             should_interrupt: &AtomicBool,
         ) -> Result<bool, gix::Error> {
-            let repo = this.0.to_thread_local();
+            let mut repo = this.0.to_thread_local();
+            // Updating the ref writes a reflog entry, which needs a
+            // committer; like clone, fall back to a generic one if git has
+            // no identity configured.
+            repo.committer_or_set_generic_fallback()?;
             let mut progress = TracingProgress::new("Fetching");
 
             let prepare = repo
