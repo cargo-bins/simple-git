@@ -2481,6 +2481,7 @@ dependencies = [
  "compact_str",
  "derive_destructure2",
  "gix",
+ "tempfile",
  "thiserror 1.0.63",
  "tokio",
  "tracing",
