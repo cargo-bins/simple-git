@@ -1,6 +1,7 @@
-use std::{fmt, mem, num::NonZeroU32, path::Path, str::FromStr, sync::atomic::AtomicBool};
+use std::{
+    borrow::Cow, fmt, mem, num::NonZeroU32, path::Path, str::FromStr, sync::atomic::AtomicBool,
+};
 
-use compact_str::CompactString;
 use gix::{
     clone, create,
     open::{self, Permissions},
@@ -36,27 +37,27 @@ impl FromStr for GitUrl {
 
 /// Which commit of a remote repository to check out, like the
 /// `--branch`, `--tag` and `--rev` options of `cargo install --git`.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 #[non_exhaustive]
-pub enum GitReference {
+pub enum GitReference<'a> {
     /// The commit the remote `HEAD` points to, usually the tip of the
     /// default branch.
     #[default]
     DefaultBranch,
     /// The tip of a branch, e.g. `main`.
-    Branch(CompactString),
+    Branch(&'a str),
     /// A tag, e.g. `v1.0.0`.
-    Tag(CompactString),
+    Tag(&'a str),
     /// A full commit hash, a full ref name like `refs/pull/1/head`, or any
     /// other revision git understands, such as an abbreviated commit hash.
     ///
     /// Only full commit hashes and full ref names can be fetched on their
     /// own; anything else needs every branch and tag with their whole
     /// history, so it is much slower.
-    Rev(CompactString),
+    Rev(&'a str),
 }
 
-impl fmt::Display for GitReference {
+impl fmt::Display for GitReference<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::DefaultBranch => f.write_str("default branch"),
@@ -68,30 +69,30 @@ impl fmt::Display for GitReference {
 }
 
 /// How [`Repository::shallow_clone_reference`] fetches a [`GitReference`].
-enum Fetch {
+enum Fetch<'a> {
     /// Fetch the remote `HEAD` with depth 1.
     DefaultBranch,
     /// Fetch only this refspec source with depth 1 and detach `HEAD` onto it.
-    Revision(String),
+    Revision(Cow<'a, str>),
     /// Fetch every branch and tag with full history, then resolve the
     /// revision locally.
-    Everything(CompactString),
+    Everything(&'a str),
 }
 
-impl Fetch {
-    fn new(reference: &GitReference) -> Self {
+impl<'a> Fetch<'a> {
+    fn new(reference: GitReference<'a>) -> Self {
         match reference {
             GitReference::DefaultBranch => Self::DefaultBranch,
-            GitReference::Branch(branch) => Self::Revision(format!("refs/heads/{branch}")),
-            GitReference::Tag(tag) => Self::Revision(format!("refs/tags/{tag}")),
+            GitReference::Branch(branch) => Self::Revision(format!("refs/heads/{branch}").into()),
+            GitReference::Tag(tag) => Self::Revision(format!("refs/tags/{tag}").into()),
             GitReference::Rev(rev)
                 if rev.starts_with("refs/")
                     || rev == "HEAD"
                     || gix::ObjectId::from_hex(rev.as_bytes()).is_ok() =>
             {
-                Self::Revision(rev.to_string())
+                Self::Revision(rev.into())
             }
-            GitReference::Rev(rev) => Self::Everything(rev.clone()),
+            GitReference::Rev(rev) => Self::Everything(rev),
         }
     }
 }
@@ -107,11 +108,8 @@ fn resolve_rev(repo: &gix::Repository, rev: &str) -> Result<gix::ObjectId, gix::
 
     // The order git looks up a short ref name in, see gitrevisions(7),
     // with branches under `refs/remotes/origin/` as clone puts them there.
-    for name in [
-        format!("refs/tags/{rev}"),
-        format!("refs/remotes/origin/{rev}"),
-    ] {
-        if let Some(mut reference) = repo.try_find_reference(name.as_str())? {
+    for prefix in ["refs/tags/", "refs/remotes/origin/"] {
+        if let Some(mut reference) = repo.try_find_reference(format!("{prefix}{rev}").as_str())? {
             return Ok(reference.peel_to_commit()?.id);
         }
     }
@@ -194,7 +192,7 @@ impl Repository {
         path: &Path,
         cancellation_token: Option<GitCancellationToken>,
     ) -> Result<Self, GitError> {
-        Self::shallow_clone_reference(url, path, &GitReference::DefaultBranch, cancellation_token)
+        Self::shallow_clone_reference(url, path, GitReference::DefaultBranch, cancellation_token)
     }
 
     /// Clone `url` to `path` with a worktree checked out at `reference`.
@@ -214,13 +212,13 @@ impl Repository {
     pub fn shallow_clone_reference(
         url: GitUrl,
         path: &Path,
-        reference: &GitReference,
+        reference: GitReference<'_>,
         cancellation_token: Option<GitCancellationToken>,
     ) -> Result<Self, GitError> {
         fn inner(
             url: GitUrl,
             path: &Path,
-            fetch: Fetch,
+            fetch: Fetch<'_>,
             should_interrupt: &AtomicBool,
         ) -> Result<gix::Repository, gix::Error> {
             let mut progress = TracingProgress::new("Cloning with worktree");
@@ -229,7 +227,7 @@ impl Repository {
             match &fetch {
                 Fetch::DefaultBranch => {}
                 Fetch::Revision(revision) => {
-                    prepare = prepare.with_revision(Some(revision.as_str()))?;
+                    prepare = prepare.with_revision(Some(&**revision))?;
                 }
                 Fetch::Everything(_) => {
                     prepare = prepare.with_shallow(remote::fetch::Shallow::NoChange);

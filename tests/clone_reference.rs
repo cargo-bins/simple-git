@@ -69,10 +69,13 @@ fn upstream() -> Upstream {
     }
 }
 
-fn clone(upstream: &Upstream, reference: GitReference) -> Result<(String, String, bool), String> {
+fn clone(
+    upstream: &Upstream,
+    reference: GitReference<'_>,
+) -> Result<(String, String, bool), String> {
     let url: GitUrl = upstream.dir.path().to_str().unwrap().parse().unwrap();
     let dest = tempfile::tempdir().unwrap();
-    let repo = Repository::shallow_clone_reference(url, dest.path(), &reference, None)
+    let repo = Repository::shallow_clone_reference(url, dest.path(), reference, None)
         .map_err(|err| err.to_string())?;
 
     let file = fs::read_to_string(dest.path().join("file")).unwrap();
@@ -91,8 +94,8 @@ fn clone(upstream: &Upstream, reference: GitReference) -> Result<(String, String
     ))
 }
 
-fn rev(rev: &str) -> GitReference {
-    GitReference::Rev(rev.into())
+fn rev(rev: &str) -> GitReference<'_> {
+    GitReference::Rev(rev)
 }
 
 #[test]
@@ -108,13 +111,13 @@ fn default_branch() {
 #[test]
 fn branch() {
     let upstream = upstream();
-    let (head, file, shallow) = clone(&upstream, GitReference::Branch("feature".into())).unwrap();
+    let (head, file, shallow) = clone(&upstream, GitReference::Branch("feature")).unwrap();
     assert_eq!(
         (head.as_str(), file.as_str(), shallow),
         (upstream.feature.as_str(), "feature", true)
     );
 
-    let err = clone(&upstream, GitReference::Branch("v1".into())).unwrap_err();
+    let err = clone(&upstream, GitReference::Branch("v1")).unwrap_err();
     assert!(err.contains("refs/heads/v1"), "{err}");
 }
 
@@ -122,7 +125,7 @@ fn branch() {
 fn tag() {
     let upstream = upstream();
     for tag in ["v1", "light"] {
-        let (head, file, shallow) = clone(&upstream, GitReference::Tag(tag.into())).unwrap();
+        let (head, file, shallow) = clone(&upstream, GitReference::Tag(tag)).unwrap();
         assert_eq!(
             (head.as_str(), file.as_str(), shallow),
             (upstream.tagged.as_str(), "tagged", true),
@@ -130,7 +133,7 @@ fn tag() {
         );
     }
 
-    let err = clone(&upstream, GitReference::Tag("feature".into())).unwrap_err();
+    let err = clone(&upstream, GitReference::Tag("feature")).unwrap_err();
     assert!(err.contains("refs/tags/feature"), "{err}");
 }
 
