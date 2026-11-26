@@ -143,7 +143,7 @@ impl Repository {
 
         gix::init(path)
             .map(|repo| Self(repo.into()))
-            .map_err(|err| GitError::new(err.into()))
+            .map_err(GitError::new)
     }
 
     /// Whether the repository is shallow, i.e. was cloned or fetched with
