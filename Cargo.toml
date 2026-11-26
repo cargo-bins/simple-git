@@ -1,12 +1,12 @@
 [package]
 name = "simple-git"
-version = "0.2.38"
+version = "0.2.39"
 edition = "2021"
 
 description = "The simple git interface for gix suitable for async context (with tokio)"
 repository = "https://github.com/cargo-bins/simple-git"
 documentation = "https://docs.rs/simple-git"
-rust-version = "1.89.0"
+rust-version = "1.95.0"
 authors = ["Jiahao XU <Jiahao_XU@outlook.com>"]
 license = "Apache-2.0 OR MIT"
 
@@ -21,7 +21,7 @@ tokio = { version = "1.37.0", features = [
 tracing = "0.1.44"
 
 [dependencies.gix]
-version = "0.90.0"
+version = "0.91.0"
 default-features = false
 features = [
     "comfort",
@@ -43,4 +43,3 @@ git-max-perf = []
 
 [dev-dependencies]
 tempfile = "3"
-tokio = { version = "1.37.0", features = ["macros", "rt-multi-thread"] }
