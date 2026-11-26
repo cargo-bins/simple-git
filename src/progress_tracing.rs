@@ -30,19 +30,22 @@ impl TracingProgress {
     /// Create a new instanCompactce from `name`.
     pub fn new(name: &str) -> Self {
         let trigger = Arc::new(AtomicBool::new(true));
-        tokio::spawn({
-            let mut interval = time::interval(Duration::from_secs_f32(EMIT_LOG_EVERY_S));
-            interval.set_missed_tick_behavior(time::MissedTickBehavior::Skip);
+        // Without a runtime, e.g. in tests, only the first progress is logged.
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            handle.spawn({
+                let mut interval = time::interval(Duration::from_secs_f32(EMIT_LOG_EVERY_S));
+                interval.set_missed_tick_behavior(time::MissedTickBehavior::Skip);
 
-            let trigger = Arc::clone(&trigger);
-            async move {
-                while Arc::strong_count(&trigger) > 1 {
-                    trigger.store(true, Ordering::Relaxed);
+                let trigger = Arc::clone(&trigger);
+                async move {
+                    while Arc::strong_count(&trigger) > 1 {
+                        trigger.store(true, Ordering::Relaxed);
 
-                    interval.tick().await;
+                        interval.tick().await;
+                    }
                 }
-            }
-        });
+            });
+        }
         Self {
             name: CompactString::new(name),
             id: UNKNOWN,

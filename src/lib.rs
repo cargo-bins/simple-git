@@ -61,7 +61,8 @@ impl Repository {
     /// WARNING: This is a blocking operation, if you want to use it in
     /// async context then you must wrap the call in [`tokio::task::spawn_blocking`].
     ///
-    /// WARNING: This function must be called after tokio runtime is initialized.
+    /// Progress is logged every 0.5s when called within a tokio runtime, and
+    /// only once otherwise.
     pub fn shallow_clone_bare(
         url: GitUrl,
         path: &Path,
@@ -87,7 +88,8 @@ impl Repository {
     /// WARNING: This is a blocking operation, if you want to use it in
     /// async context then you must wrap the call in [`tokio::task::spawn_blocking`].
     ///
-    /// WARNING: This function must be called after tokio runtime is initialized.
+    /// Progress is logged every 0.5s when called within a tokio runtime, and
+    /// only once otherwise.
     pub fn shallow_clone(
         url: GitUrl,
         path: &Path,
@@ -170,7 +172,8 @@ impl Repository {
     /// WARNING: This is a blocking operation, if you want to use it in
     /// async context then you must wrap the call in [`tokio::task::spawn_blocking`].
     ///
-    /// WARNING: This function must be called after tokio runtime is initialized.
+    /// Progress is logged every 0.5s when called within a tokio runtime, and
+    /// only once otherwise.
     pub fn fetch_head(
         &self,
         url: GitUrl,
@@ -184,18 +187,20 @@ impl Repository {
             should_interrupt: &AtomicBool,
         ) -> Result<bool, gix::Error> {
             let mut repo = this.0.to_thread_local();
-            // Updating the ref writes a reflog entry, which needs a
-            // committer; like clone, fall back to a generic one if git has
-            // no identity configured.
-            repo.committer_or_set_generic_fallback()?;
+            // Like cargo: no reflog for the ref update, which would need a
+            // committer (unset e.g. on CI) and only grow on every fetch.
+            {
+                let mut config = repo.config_snapshot_mut();
+                config.set_value(&gix::config::tree::Core::LOG_ALL_REF_UPDATES, "false")?;
+                config.commit()?;
+            }
             let mut progress = TracingProgress::new("Fetching");
 
+            // An anonymous remote, as cargo's index clones have no `origin`
+            // configured, and cargo fetches from the URL the same way.
             let prepare = repo
                 .remote_at(url)?
-                .with_refspecs(
-                    Some(format!("+HEAD:{}", Repository::FETCHED_HEAD).as_str()),
-                    remote::Direction::Fetch,
-                )?
+                .with_refspecs(Some(Repository::FETCH_REFSPEC), remote::Direction::Fetch)?
                 .with_fetch_tags(remote::fetch::Tags::None)
                 .connect(remote::Direction::Fetch)?
                 .prepare_fetch(&mut progress, Default::default())?;
@@ -247,8 +252,11 @@ impl Repository {
         .map_err(GitError::new)
     }
 
+    /// The refspec [`Repository::fetch_head`] fetches, the same as cargo's.
+    const FETCH_REFSPEC: &'static str = "+HEAD:refs/remotes/origin/HEAD";
+
     /// The ref [`Repository::fetch_head`] writes the remote `HEAD` to.
-    pub const FETCHED_HEAD: &'static str = "refs/remotes/origin/HEAD";
+    pub const FETCHED_HEAD: &'static str = Self::FETCH_REFSPEC.split_at("+HEAD:".len()).1;
 
     /// Path to the repository's git directory, e.g. `path/.git` for a
     /// non-bare one or the repository itself for a bare one.

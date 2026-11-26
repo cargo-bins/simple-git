@@ -1,6 +1,6 @@
 use std::{fs, path::Path, process::Command};
 
-use simple_git::{GitError, GitUrl, Repository};
+use simple_git::{GitUrl, Repository};
 
 fn git(dir: &Path, args: &[&str]) -> String {
     let output = Command::new("git")
@@ -32,23 +32,18 @@ fn fetched_file(repo: &Repository) -> Vec<u8> {
 
 /// Open the repository at `path` like a new process would (creating it if
 /// needed) and fetch `url`'s HEAD into it.
-async fn open_and_fetch(url: &GitUrl, path: &Path, shallow: bool) -> (Repository, bool) {
-    let (url, path) = (url.clone(), path.to_owned());
-    tokio::task::spawn_blocking(move || {
-        let repo = if path.exists() {
-            Repository::open(&path)?
-        } else {
-            Repository::init(&path)?
-        };
-        let received_pack = repo.fetch_head(url, shallow, None)?;
-        Ok::<_, GitError>((repo, received_pack))
-    })
-    .await
-    .unwrap()
-    .unwrap()
+fn open_and_fetch(url: &GitUrl, path: &Path, shallow: bool) -> (Repository, bool) {
+    let repo = if path.exists() {
+        Repository::open(path)
+    } else {
+        Repository::init(path)
+    }
+    .unwrap();
+    let received_pack = repo.fetch_head(url.clone(), shallow, None).unwrap();
+    (repo, received_pack)
 }
 
-async fn fetch_updates_the_clone(shallow: bool) {
+fn fetch_updates_the_clone(shallow: bool) {
     let upstream = tempfile::tempdir().unwrap();
     let local = tempfile::tempdir().unwrap();
     let local = local.path().join("index");
@@ -57,7 +52,7 @@ async fn fetch_updates_the_clone(shallow: bool) {
     let v1 = commit(upstream.path(), "v1");
     let url: GitUrl = upstream.path().to_str().unwrap().parse().unwrap();
 
-    let (repo, received_pack) = open_and_fetch(&url, &local, shallow).await;
+    let (repo, received_pack) = open_and_fetch(&url, &local, shallow);
     assert!(received_pack);
     assert_eq!(fetched_file(&repo), b"v1");
     assert_eq!(repo.is_shallow().unwrap(), shallow);
@@ -69,12 +64,15 @@ async fn fetch_updates_the_clone(shallow: bool) {
     );
     drop(repo);
 
+    // Like cargo, no reflog is written.
+    assert!(!local.join(".git/logs/refs/remotes/origin/HEAD").exists());
+
     // git sees the same thing.
     let fetched = git(&local, &["rev-parse", Repository::FETCHED_HEAD]);
     assert_eq!(fetched.trim(), v1);
 
     let v2 = commit(upstream.path(), "v2");
-    let (repo, received_pack) = open_and_fetch(&url, &local, shallow).await;
+    let (repo, received_pack) = open_and_fetch(&url, &local, shallow);
     assert!(received_pack);
     assert_eq!(fetched_file(&repo), b"v2");
     assert_eq!(repo.is_shallow().unwrap(), shallow);
@@ -86,16 +84,16 @@ async fn fetch_updates_the_clone(shallow: bool) {
     assert_eq!(history.trim(), if shallow { "1" } else { "2" });
 
     // Nothing new upstream.
-    let (_, received_pack) = open_and_fetch(&url, &local, shallow).await;
+    let (_, received_pack) = open_and_fetch(&url, &local, shallow);
     assert!(!received_pack);
 }
 
-#[tokio::test(flavor = "multi_thread")]
-async fn shallow_fetch_updates_the_clone() {
-    fetch_updates_the_clone(true).await;
+#[test]
+fn shallow_fetch_updates_the_clone() {
+    fetch_updates_the_clone(true);
 }
 
-#[tokio::test(flavor = "multi_thread")]
-async fn full_fetch_updates_the_clone() {
-    fetch_updates_the_clone(false).await;
+#[test]
+fn full_fetch_updates_the_clone() {
+    fetch_updates_the_clone(false);
 }
