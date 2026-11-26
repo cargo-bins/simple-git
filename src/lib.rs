@@ -1,4 +1,6 @@
-use std::{fmt, mem, num::NonZeroU32, path::Path, str::FromStr, sync::atomic::AtomicBool};
+use std::{
+    borrow::Cow, fmt, mem, num::NonZeroU32, path::Path, str::FromStr, sync::atomic::AtomicBool,
+};
 
 use gix::{
     clone, create,
@@ -33,6 +35,101 @@ impl FromStr for GitUrl {
     }
 }
 
+/// Which commit of a remote repository to check out, like the
+/// `--branch`, `--tag` and `--rev` options of `cargo install --git`.
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum GitReference<'a> {
+    /// The commit the remote `HEAD` points to, usually the tip of the
+    /// default branch.
+    #[default]
+    DefaultBranch,
+    /// The tip of a branch, e.g. `main`.
+    Branch(&'a str),
+    /// A tag, e.g. `v1.0.0`.
+    Tag(&'a str),
+    /// A full commit hash, a full ref name like `refs/pull/1/head`, or any
+    /// other revision git understands, such as an abbreviated commit hash.
+    ///
+    /// Only full commit hashes and full ref names can be fetched on their
+    /// own; anything else needs every branch and tag with their whole
+    /// history, so it is much slower.
+    Rev(&'a str),
+}
+
+impl fmt::Display for GitReference<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::DefaultBranch => f.write_str("default branch"),
+            Self::Branch(branch) => write!(f, "branch {branch}"),
+            Self::Tag(tag) => write!(f, "tag {tag}"),
+            Self::Rev(rev) => write!(f, "rev {rev}"),
+        }
+    }
+}
+
+/// How [`Repository::shallow_clone_reference`] fetches a [`GitReference`].
+enum Fetch<'a> {
+    /// Fetch the remote `HEAD` with depth 1.
+    DefaultBranch,
+    /// Fetch only this refspec source with depth 1 and detach `HEAD` onto it.
+    Revision(Cow<'a, str>),
+    /// Fetch every branch and tag with full history, then resolve the
+    /// revision locally.
+    Everything(&'a str),
+}
+
+impl<'a> Fetch<'a> {
+    fn new(reference: GitReference<'a>) -> Self {
+        match reference {
+            GitReference::DefaultBranch => Self::DefaultBranch,
+            GitReference::Branch(branch) => Self::Revision(format!("refs/heads/{branch}").into()),
+            GitReference::Tag(tag) => Self::Revision(format!("refs/tags/{tag}").into()),
+            GitReference::Rev(rev)
+                if rev.starts_with("refs/")
+                    || rev == "HEAD"
+                    || gix::ObjectId::from_hex(rev.as_bytes()).is_ok() =>
+            {
+                Self::Revision(rev.into())
+            }
+            GitReference::Rev(rev) => Self::Everything(rev),
+        }
+    }
+}
+
+/// Resolve `rev` to a commit, like `git rev-parse <rev>^{commit}` would
+/// for a ref name or an abbreviated commit hash, in a repository fetched
+/// with [`Fetch::Everything`].
+///
+/// `gix`'s rev-parse is behind its `revision` feature, which pulls in a lot
+/// more than this needs.
+fn resolve_rev(repo: &gix::Repository, rev: &str) -> Result<gix::ObjectId, gix::Error> {
+    use gix::error::{message, ResultExt};
+
+    // The order git looks up a short ref name in, see gitrevisions(7),
+    // with branches under `refs/remotes/origin/` as clone puts them there.
+    for prefix in ["refs/tags/", "refs/remotes/origin/"] {
+        if let Some(mut reference) = repo.try_find_reference(format!("{prefix}{rev}").as_str())? {
+            return Ok(reference.peel_to_commit()?.id);
+        }
+    }
+
+    if rev.len() >= 4 {
+        if let Ok(prefix) = gix::hash::Prefix::from_hex(rev) {
+            match repo.objects.lookup_prefix(prefix, None).or_error()? {
+                Some(Ok(id)) => return Ok(repo.find_object(id)?.peel_to_commit()?.id),
+                Some(Err(())) => {
+                    return Err(message!("The abbreviated commit hash {rev} is ambiguous")
+                        .validation_error())
+                }
+                None => {}
+            }
+        }
+    }
+
+    Err(message!("The remote has no branch, tag or commit matching {rev}").not_found_error())
+}
+
 #[derive(Debug)]
 pub struct Repository(gix::ThreadSafeRepository);
 
@@ -41,7 +138,7 @@ impl Repository {
         url: GitUrl,
         path: &Path,
         kind: create::Kind,
-    ) -> Result<clone::PrepareFetch, GitError> {
+    ) -> Result<clone::PrepareFetch, gix::Error> {
         Ok(clone::PrepareFetch::new(
             url.0,
             path,
@@ -51,8 +148,7 @@ impl Repository {
                 ..Default::default()
             },
             open::Options::default().permissions(Permissions::all()),
-        )
-        .map_err(GitError::new)?
+        )?
         .with_shallow(remote::fetch::Shallow::DepthAtRemote(
             NonZeroU32::new(1).unwrap(),
         )))
@@ -71,7 +167,8 @@ impl Repository {
         debug!("Shallow cloning {url} to {}", path.display());
 
         Ok(Self(
-            Self::prepare_fetch(url, path, create::Kind::Bare)?
+            Self::prepare_fetch(url, path, create::Kind::Bare)
+                .map_err(GitError::new)?
                 .fetch_only(
                     &mut TracingProgress::new("Cloning bare"),
                     cancellation_token
@@ -95,25 +192,81 @@ impl Repository {
         path: &Path,
         cancellation_token: Option<GitCancellationToken>,
     ) -> Result<Self, GitError> {
-        debug!("Shallow cloning {url} to {} with worktree", path.display());
+        Self::shallow_clone_reference(url, path, GitReference::DefaultBranch, cancellation_token)
+    }
 
-        let mut progress = TracingProgress::new("Cloning with worktree");
+    /// Clone `url` to `path` with a worktree checked out at `reference`.
+    ///
+    /// The clone is shallow (depth 1) unless `reference` is a
+    /// [`GitReference::Rev`] that is neither a full commit hash nor a full
+    /// ref name, e.g. an abbreviated commit hash: that needs the whole
+    /// history of every branch and tag to be resolved.
+    ///
+    /// For anything but [`GitReference::DefaultBranch`], `HEAD` is detached.
+    ///
+    /// WARNING: This is a blocking operation, if you want to use it in
+    /// async context then you must wrap the call in [`tokio::task::spawn_blocking`].
+    ///
+    /// Progress is logged every 0.5s when called within a tokio runtime, and
+    /// only once otherwise.
+    pub fn shallow_clone_reference(
+        url: GitUrl,
+        path: &Path,
+        reference: GitReference<'_>,
+        cancellation_token: Option<GitCancellationToken>,
+    ) -> Result<Self, GitError> {
+        fn inner(
+            url: GitUrl,
+            path: &Path,
+            fetch: Fetch<'_>,
+            should_interrupt: &AtomicBool,
+        ) -> Result<gix::Repository, gix::Error> {
+            let mut progress = TracingProgress::new("Cloning with worktree");
+
+            let mut prepare = Repository::prepare_fetch(url, path, create::Kind::WithWorktree)?;
+            match &fetch {
+                Fetch::DefaultBranch => {}
+                Fetch::Revision(revision) => {
+                    prepare = prepare.with_revision(Some(&**revision))?;
+                }
+                Fetch::Everything(_) => {
+                    prepare = prepare.with_shallow(remote::fetch::Shallow::NoChange);
+                }
+            }
+
+            let mut checkout = prepare
+                .fetch_then_checkout(&mut progress, should_interrupt)?
+                .0;
+
+            if let Fetch::Everything(rev) = &fetch {
+                let repo = checkout.repo();
+                let commit = resolve_rev(repo, rev)?;
+                // Without dereferencing, so `HEAD` becomes detached instead of
+                // moving the branch it points to.
+                repo.reference(
+                    "HEAD",
+                    commit,
+                    gix::refs::transaction::PreviousValue::Any,
+                    format!("checkout: moving to {rev}"),
+                )?;
+            }
+
+            Ok(checkout.main_worktree(&mut progress, should_interrupt)?.0)
+        }
+
+        debug!(
+            "Shallow cloning {url} at {reference} to {} with worktree",
+            path.display()
+        );
 
         let should_interrupt = match &cancellation_token {
             Some(token) => token.get_atomic(),
             None => &AtomicBool::new(false),
         };
 
-        Ok(Self(
-            Self::prepare_fetch(url, path, create::Kind::WithWorktree)?
-                .fetch_then_checkout(&mut progress, should_interrupt)
-                .map_err(GitError::new)?
-                .0
-                .main_worktree(&mut progress, should_interrupt)
-                .map_err(GitError::new)?
-                .0
-                .into(),
-        ))
+        inner(url, path, Fetch::new(reference), should_interrupt)
+            .map(|repo| Self(repo.into()))
+            .map_err(GitError::new)
     }
 
     /// Open an existing repository at `path`, e.g. one created by
