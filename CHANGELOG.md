@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.40](https://github.com/cargo-bins/simple-git/compare/v0.2.39...v0.2.40) - 2026-11-26
+
+### Other
+
+- Add Repository::shallow_clone_reference for branches, tags and revs ([#169](https://github.com/cargo-bins/simple-git/pull/169))
+- Add Repository::open/init/fetch_head for sharing cargo index clones ([#168](https://github.com/cargo-bins/simple-git/pull/168))
+
 ## [0.2.39](https://github.com/cargo-bins/simple-git/compare/v0.2.38...v0.2.39) - 2026-11-26
 
 ### Other
