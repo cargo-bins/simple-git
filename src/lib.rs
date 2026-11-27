@@ -20,8 +20,16 @@ pub use cancellation_token::{GitCancelOnDrop, GitCancellationToken};
 mod error;
 pub use error::{GitError, GitUrlParseError};
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct GitUrl(Url);
+
+impl fmt::Debug for GitUrl {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("GitUrl")
+            .field(&format_args!("{}", self.redacted()))
+            .finish()
+    }
+}
 
 impl fmt::Display for GitUrl {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -533,6 +541,7 @@ mod tests {
         ] {
             let url: GitUrl = url.parse().unwrap();
             assert_eq!(url.redacted().to_string(), expected);
+            assert_eq!(format!("{url:?}"), format!("GitUrl({expected})"));
         }
     }
 }
