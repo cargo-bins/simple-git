@@ -5,7 +5,9 @@ use std::{
 use gix::{
     clone, create,
     open::{self, Permissions},
-    remote, Url,
+    remote,
+    url::Scheme,
+    Url,
 };
 use tracing::debug;
 
@@ -24,6 +26,23 @@ pub struct GitUrl(Url);
 impl fmt::Display for GitUrl {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Display::fmt(&self.0, f)
+    }
+}
+
+impl GitUrl {
+    /// The URL for logs: like [`Display`](fmt::Display), which replaces the
+    /// password, but also with the user name of an HTTP(S) URL replaced,
+    /// since a token is often passed there, as in
+    /// `https://<token>@github.com/owner/repo`.
+    fn redacted(&self) -> Cow<'_, Url> {
+        let url = &self.0;
+        if url.user().is_some() && matches!(url.scheme, Scheme::Http | Scheme::Https) {
+            let mut url = url.clone();
+            url.set_user(Some("redacted".into()));
+            Cow::Owned(url)
+        } else {
+            Cow::Borrowed(url)
+        }
     }
 }
 
@@ -164,7 +183,7 @@ impl Repository {
         path: &Path,
         cancellation_token: Option<GitCancellationToken>,
     ) -> Result<Self, GitError> {
-        debug!("Shallow cloning {url} to {}", path.display());
+        debug!("Shallow cloning {} to {}", url.redacted(), path.display());
 
         Ok(Self(
             Self::prepare_fetch(url, path, create::Kind::Bare)
@@ -255,7 +274,8 @@ impl Repository {
         }
 
         debug!(
-            "Shallow cloning {url} at {reference} to {} with worktree",
+            "Shallow cloning {} at {reference} to {} with worktree",
+            url.redacted(),
             path.display()
         );
 
@@ -391,7 +411,7 @@ impl Repository {
             Ok(received_pack)
         }
 
-        debug!("Fetching HEAD of {url} (shallow: {shallow})");
+        debug!("Fetching HEAD of {} (shallow: {shallow})", url.redacted());
 
         inner(
             self,
@@ -479,5 +499,40 @@ impl Repository {
             .head_commit()
             .map_err(GitError::new)?
             .id)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn redacted_url() {
+        for (url, expected) in [
+            (
+                "https://ghp_token@github.com/owner/repo",
+                "https://redacted@github.com/owner/repo",
+            ),
+            (
+                "https://user:token@example.com/repo.git",
+                "https://redacted:redacted@example.com/repo.git",
+            ),
+            (
+                "https://github.com/owner/repo",
+                "https://github.com/owner/repo",
+            ),
+            // Not a secret over SSH.
+            (
+                "git@github.com:owner/repo.git",
+                "git@github.com:owner/repo.git",
+            ),
+            (
+                "ssh://git@github.com/owner/repo.git",
+                "ssh://git@github.com/owner/repo.git",
+            ),
+        ] {
+            let url: GitUrl = url.parse().unwrap();
+            assert_eq!(url.redacted().to_string(), expected);
+        }
     }
 }
