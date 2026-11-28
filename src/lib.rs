@@ -1,5 +1,5 @@
 use std::{
-    borrow::Cow, fmt, mem, num::NonZeroU32, path::Path, str::FromStr, sync::atomic::AtomicBool,
+    borrow::Cow, fmt, io, mem, num::NonZeroU32, path::Path, str::FromStr, sync::atomic::AtomicBool,
 };
 
 use gix::{
@@ -39,18 +39,106 @@ impl fmt::Display for GitUrl {
 
 impl GitUrl {
     /// The URL for logs: like [`Display`](fmt::Display), which replaces the
-    /// password, but also with the user name of an HTTP(S) URL replaced,
-    /// since a token is often passed there, as in
-    /// `https://<token>@github.com/owner/repo`.
-    fn redacted(&self) -> Cow<'_, Url> {
-        let url = &self.0;
-        if url.user().is_some() && matches!(url.scheme, Scheme::Http | Scheme::Https) {
-            let mut url = url.clone();
-            url.set_user(Some("redacted".into()));
-            Cow::Owned(url)
-        } else {
-            Cow::Borrowed(url)
+    /// password, but with the whole user name and password replaced for an
+    /// HTTP(S) URL, since a token is often passed as the user name, as in
+    /// `https://<token>@github.com/owner/repo`. Over SSH the user name is the
+    /// login (`git@`) and is kept.
+    ///
+    /// Unlike `Display`, nothing is cloned or collected first: the URL is
+    /// written straight to the formatter.
+    pub fn redacted(&self) -> impl fmt::Display + '_ {
+        RedactedGitUrl(&self.0)
+    }
+}
+
+/// See [`GitUrl::redacted`].
+struct RedactedGitUrl<'a>(&'a Url);
+
+impl fmt::Display for RedactedGitUrl<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let url = self.0;
+        let redact = url.password().is_some()
+            || (url.user().is_some() && matches!(url.scheme, Scheme::Http | Scheme::Https));
+        let mut out = RedactingWriter {
+            f,
+            state: if redact {
+                RedactState::Scheme(0)
+            } else {
+                RedactState::Rest
+            },
+        };
+        url.write_to(&mut out).map_err(|_| fmt::Error)
+    }
+}
+
+enum RedactState {
+    /// How much of the `://` before the user name was seen.
+    Scheme(u8),
+    /// Dropping the user name and password, up to the `@` after them (an
+    /// `@` in them is percent-encoded).
+    Userinfo,
+    Rest,
+}
+
+/// Writes a URL to `f`, replacing its user name and password.
+struct RedactingWriter<'a, 'b> {
+    f: &'a mut fmt::Formatter<'b>,
+    state: RedactState,
+}
+
+impl RedactingWriter<'_, '_> {
+    fn write_bytes(&mut self, bytes: &[u8]) -> io::Result<()> {
+        self.f
+            .write_str(&String::from_utf8_lossy(bytes))
+            .map_err(io::Error::other)
+    }
+}
+
+impl io::Write for RedactingWriter<'_, '_> {
+    fn write(&mut self, mut buf: &[u8]) -> io::Result<usize> {
+        let len = buf.len();
+        while !buf.is_empty() {
+            match self.state {
+                RedactState::Scheme(seen) => {
+                    let mut seen = seen;
+                    let end = buf
+                        .iter()
+                        .position(|&b| {
+                            seen = match (seen, b) {
+                                (_, b':') => 1,
+                                (1 | 2, b'/') => seen + 1,
+                                _ => 0,
+                            };
+                            seen == 3
+                        })
+                        .map_or(buf.len(), |i| i + 1);
+                    self.write_bytes(&buf[..end])?;
+                    buf = &buf[end..];
+                    self.state = if seen == 3 {
+                        RedactState::Userinfo
+                    } else {
+                        RedactState::Scheme(seen)
+                    };
+                }
+                RedactState::Userinfo => match buf.iter().position(|&b| b == b'@') {
+                    Some(at) => {
+                        self.write_bytes(b"redacted")?;
+                        buf = &buf[at..];
+                        self.state = RedactState::Rest;
+                    }
+                    None => buf = &[],
+                },
+                RedactState::Rest => {
+                    self.write_bytes(buf)?;
+                    buf = &[];
+                }
+            }
         }
+        Ok(len)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
     }
 }
 
@@ -523,13 +611,23 @@ mod tests {
             ),
             (
                 "https://user:token@example.com/repo.git",
-                "https://redacted:redacted@example.com/repo.git",
+                "https://redacted@example.com/repo.git",
             ),
             (
                 "https://github.com/owner/repo",
                 "https://github.com/owner/repo",
             ),
-            // Not a secret over SSH.
+            // An `@` in the user name is percent-encoded.
+            (
+                "https://us%40er:token@example.com/repo.git",
+                "https://redacted@example.com/repo.git",
+            ),
+            // A password is a secret over SSH too.
+            (
+                "ssh://git:secret@github.com/owner/repo.git",
+                "ssh://redacted@github.com/owner/repo.git",
+            ),
+            // The login is not a secret over SSH.
             (
                 "git@github.com:owner/repo.git",
                 "git@github.com:owner/repo.git",
