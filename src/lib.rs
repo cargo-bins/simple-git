@@ -3,6 +3,7 @@ use std::{
     fmt::{self, Write as _},
     io, mem,
     num::NonZeroU32,
+    ops::Range,
     path::Path,
     str::FromStr,
     sync::atomic::AtomicBool,
@@ -168,8 +169,41 @@ impl FromStr for GitUrl {
     type Err = GitUrlParseError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Url::try_from(s).map(Self).map_err(GitError::new)
+        Url::try_from(s)
+            .map(Self)
+            .map_err(|err| GitError::new(redact_parse_error(s, err)))
     }
+}
+
+/// gix puts the whole input in its parse error, so a URL with a token or
+/// password would show it in the error message.
+///
+/// Parse the input again with its userinfo replaced, which gives the same
+/// error without the secret.
+#[cold]
+fn redact_parse_error(s: &str, err: gix::Error) -> gix::Error {
+    let Some(userinfo) = userinfo_range(s) else {
+        return err;
+    };
+    let redacted = format!("{}redacted{}", &s[..userinfo.start], &s[userinfo.end..]);
+    match Url::try_from(redacted.as_str()) {
+        Err(err) => err,
+        // The userinfo itself was invalid.
+        Ok(_) => gix::error::Message::new("URL can not be parsed as valid URL")
+            .with_input(redacted)
+            .validation_error(),
+    }
+}
+
+/// Everything before the last `@`, after the `scheme://` if there is one.
+///
+/// gix can split the authority at a raw `/`, `?` or `#` in a password, so this
+/// does not look for the end of the authority. On the error path, redacting
+/// too much is fine.
+fn userinfo_range(url: &str) -> Option<Range<usize>> {
+    let at = url.rfind('@')?;
+    let start = url[..at].find("://").map_or(0, |i| i + 3);
+    Some(start..at)
 }
 
 /// Which commit of a remote repository to check out, like the
@@ -664,5 +698,49 @@ mod tests {
             assert_eq!(format!("{git_url:?}"), format!("GitUrl({expected})"));
             assert_eq!(git_url.unredacted().to_string(), url);
         }
+    }
+
+    #[test]
+    fn parse_error_hides_userinfo() {
+        for (url, expected) in [
+            (
+                "https://user:secret@exa mple.com/repo.git",
+                "https://redacted@exa mple.com/repo.git",
+            ),
+            (
+                "https://secret@[::1/repo.git",
+                "https://redacted@[::1/repo.git",
+            ),
+            ("ssh://git:secret@github.com", "ssh://redacted@github.com"),
+            // gix splits the authority at a raw `/` or `#` in the password.
+            (
+                "https://oauth2:abc/secret@gitlab.com/x.git",
+                "https://redacted@gitlab.com/x.git",
+            ),
+            (
+                "ssh://git:pa#secret@github.com",
+                "ssh://redacted@github.com",
+            ),
+            // SCP-like, with no `scheme://`.
+            ("secret@exa mple.com:path", "redacted@exa mple.com:path"),
+            // The userinfo itself is invalid.
+            (
+                "https://user:sec ret@example.com/repo.git",
+                "https://redacted@example.com/repo.git",
+            ),
+        ] {
+            let err = url.parse::<GitUrl>().err().unwrap();
+            for msg in [err.to_string(), format!("{err:?}"), format!("{err:#}")] {
+                assert!(!msg.contains("secret") && !msg.contains("sec ret"), "{msg}");
+                assert!(msg.contains(expected), "{msg}");
+            }
+        }
+
+        // Without userinfo, the error keeps the input as it is.
+        let err = "https://exa mple.com/repo.git"
+            .parse::<GitUrl>()
+            .err()
+            .unwrap();
+        assert!(err.to_string().contains("https://exa mple.com/repo.git"));
     }
 }
