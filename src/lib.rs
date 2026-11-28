@@ -189,19 +189,21 @@ fn redact_parse_error(s: &str, err: gix::Error) -> gix::Error {
     match Url::try_from(redacted.as_str()) {
         Err(err) => err,
         // The userinfo itself was invalid.
-        Ok(_) => gix::error::Message::new("URL has an invalid user or password")
+        Ok(_) => gix::error::Message::new("URL can not be parsed as valid URL")
             .with_input(redacted)
             .validation_error(),
     }
 }
 
-/// The userinfo of a `scheme://userinfo@host/...` URL, without the `@`.
+/// Everything before the last `@`, after the `scheme://` if there is one.
+///
+/// gix can split the authority at a raw `/`, `?` or `#` in a password, so this
+/// does not look for the end of the authority. On the error path, redacting
+/// too much is fine.
 fn userinfo_range(url: &str) -> Option<Range<usize>> {
-    let start = url.find("://")? + 3;
-    let rest = &url[start..];
-    let authority_len = rest.find(['/', '?', '#']).unwrap_or(rest.len());
-    let at = rest[..authority_len].rfind('@')?;
-    Some(start..start + at)
+    let at = url.rfind('@')?;
+    let start = url[..at].find("://").map_or(0, |i| i + 3);
+    Some(start..at)
 }
 
 /// Which commit of a remote repository to check out, like the
@@ -710,6 +712,17 @@ mod tests {
                 "https://redacted@[::1/repo.git",
             ),
             ("ssh://git:secret@github.com", "ssh://redacted@github.com"),
+            // gix splits the authority at a raw `/` or `#` in the password.
+            (
+                "https://oauth2:abc/secret@gitlab.com/x.git",
+                "https://redacted@gitlab.com/x.git",
+            ),
+            (
+                "ssh://git:pa#secret@github.com",
+                "ssh://redacted@github.com",
+            ),
+            // SCP-like, with no `scheme://`.
+            ("secret@exa mple.com:path", "redacted@exa mple.com:path"),
             // The userinfo itself is invalid.
             (
                 "https://user:sec ret@example.com/repo.git",
