@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.41](https://github.com/cargo-bins/simple-git/compare/v0.2.40...v0.2.41) - 2026-11-28
+
+### Other
+
+- Redact credentials in GitUrl Display ([#173](https://github.com/cargo-bins/simple-git/pull/173))
+
 ## [0.2.40](https://github.com/cargo-bins/simple-git/compare/v0.2.39...v0.2.40) - 2026-11-26
 
 ### Other
