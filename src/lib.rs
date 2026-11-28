@@ -1,5 +1,11 @@
 use std::{
-    borrow::Cow, fmt, io, mem, num::NonZeroU32, path::Path, str::FromStr, sync::atomic::AtomicBool,
+    borrow::Cow,
+    fmt::{self, Write as _},
+    io, mem,
+    num::NonZeroU32,
+    path::Path,
+    str::FromStr,
+    sync::atomic::AtomicBool,
 };
 
 use gix::{
@@ -26,49 +32,58 @@ pub struct GitUrl(Url);
 impl fmt::Debug for GitUrl {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple("GitUrl")
-            .field(&format_args!("{}", self.redacted()))
+            .field(&format_args!("{self}"))
             .finish()
     }
 }
 
+/// The URL for logs and error messages, with its user name and password
+/// replaced by `redacted` where they may be a secret:
+///
+/// - over HTTP(S), when it has a user name, since a token is often passed
+///   there, as in `https://<token>@github.com/owner/repo`;
+/// - for any URL with a password.
+///
+/// The login of an SSH URL (`git@github.com:owner/repo`) is kept. Use
+/// [`GitUrl::unredacted`] for the URL to pass on, e.g. to cargo.
 impl fmt::Display for GitUrl {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Display::fmt(&self.0, f)
+        let url = &self.0;
+        let redact = url.password().is_some()
+            || (url.user().is_some() && matches!(url.scheme, Scheme::Http | Scheme::Https));
+        write_url(url, redact, f)
     }
 }
 
 impl GitUrl {
-    /// The URL for logs: like [`Display`](fmt::Display), which replaces the
-    /// password, but with the whole user name and password replaced for an
-    /// HTTP(S) URL, since a token is often passed as the user name, as in
-    /// `https://<token>@github.com/owner/repo`. Over SSH the user name is the
-    /// login (`git@`) and is kept.
-    ///
-    /// Unlike `Display`, nothing is cloned or collected first: the URL is
-    /// written straight to the formatter.
-    pub fn redacted(&self) -> impl fmt::Display + '_ {
-        RedactedGitUrl(&self.0)
+    /// The whole URL, user name and password included, to pass on, e.g. to
+    /// another program. Never log it, see [`Display`](fmt::Display).
+    pub fn unredacted(&self) -> impl fmt::Display + '_ {
+        Unredacted(&self.0)
     }
 }
 
-/// See [`GitUrl::redacted`].
-struct RedactedGitUrl<'a>(&'a Url);
+/// See [`GitUrl::unredacted`].
+struct Unredacted<'a>(&'a Url);
 
-impl fmt::Display for RedactedGitUrl<'_> {
+impl fmt::Display for Unredacted<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let url = self.0;
-        let redact = url.password().is_some()
-            || (url.user().is_some() && matches!(url.scheme, Scheme::Http | Scheme::Https));
-        let mut out = RedactingWriter {
-            f,
-            state: if redact {
-                RedactState::Scheme(0)
-            } else {
-                RedactState::Rest
-            },
-        };
-        url.write_to(&mut out).map_err(|_| fmt::Error)
+        write_url(self.0, false, f)
     }
+}
+
+/// Write `url` straight to `f` with gix-url's `write_to`, without cloning
+/// it or serializing it into a buffer first like its `Display` does.
+fn write_url(url: &Url, redact: bool, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    let mut out = RedactingWriter {
+        f,
+        state: if redact {
+            RedactState::Scheme(0)
+        } else {
+            RedactState::Rest
+        },
+    };
+    url.write_to(&mut out).map_err(|_| fmt::Error)
 }
 
 enum RedactState {
@@ -87,10 +102,17 @@ struct RedactingWriter<'a, 'b> {
 }
 
 impl RedactingWriter<'_, '_> {
+    /// Like `String::from_utf8_lossy`, without allocating.
     fn write_bytes(&mut self, bytes: &[u8]) -> io::Result<()> {
-        self.f
-            .write_str(&String::from_utf8_lossy(bytes))
-            .map_err(io::Error::other)
+        for chunk in bytes.utf8_chunks() {
+            self.f.write_str(chunk.valid()).map_err(io::Error::other)?;
+            if !chunk.invalid().is_empty() {
+                self.f
+                    .write_char(char::REPLACEMENT_CHARACTER)
+                    .map_err(io::Error::other)?;
+            }
+        }
+        Ok(())
     }
 }
 
@@ -279,7 +301,7 @@ impl Repository {
         path: &Path,
         cancellation_token: Option<GitCancellationToken>,
     ) -> Result<Self, GitError> {
-        debug!("Shallow cloning {} to {}", url.redacted(), path.display());
+        debug!("Shallow cloning {url} to {}", path.display());
 
         Ok(Self(
             Self::prepare_fetch(url, path, create::Kind::Bare)
@@ -371,7 +393,7 @@ impl Repository {
 
         debug!(
             "Shallow cloning {} at {reference} to {} with worktree",
-            url.redacted(),
+            url,
             path.display()
         );
 
@@ -507,7 +529,7 @@ impl Repository {
             Ok(received_pack)
         }
 
-        debug!("Fetching HEAD of {} (shallow: {shallow})", url.redacted());
+        debug!("Fetching HEAD of {url} (shallow: {shallow})");
 
         inner(
             self,
@@ -637,9 +659,10 @@ mod tests {
                 "ssh://git@github.com/owner/repo.git",
             ),
         ] {
-            let url: GitUrl = url.parse().unwrap();
-            assert_eq!(url.redacted().to_string(), expected);
-            assert_eq!(format!("{url:?}"), format!("GitUrl({expected})"));
+            let git_url: GitUrl = url.parse().unwrap();
+            assert_eq!(git_url.to_string(), expected);
+            assert_eq!(format!("{git_url:?}"), format!("GitUrl({expected})"));
+            assert_eq!(git_url.unredacted().to_string(), url);
         }
     }
 }
